@@ -1,119 +1,158 @@
 # SecureCheck: A Python-SQL Digital Ledger for Police Post Logs
+
 SecureCheck is a real-time traffic stop logging and analytics system designed for law enforcement agencies. It digitizes police check post operations using Python, SQL, and Streamlit — enabling faster decision-making, predictive tagging, and insightful dashboards.
 
+---
+
 ## Project Overview
-- **Domain**: Law Enforcement & Public Safety  
-- **Tech Stack**: Python, SQL (MySQL/PostgreSQL), Streamlit  
-- **Goal**: Replace manual logging with a centralized, intelligent system for tracking vehicle stops, violations, and officer actions.
-- 
-- ##  Key Features
-- Real-time logging of traffic stops via Streamlit form  
-- Rule-based prediction of violations and outcomes  
-- SQL-powered analytics and advanced queries  
-- Interactive dashboard with visualizations (Plotly, Matplotlib)  
-- Centralized database for multi-location check posts  
+
+| Field | Details |
+|---|---|
+| **Domain** | Law Enforcement & Public Safety |
+| **Tech Stack** | Python, MySQL, Streamlit |
+| **Goal** | Replace manual logging with a centralized, intelligent system for tracking vehicle stops, violations, and officer actions |
+
+---
+
+## Key Features
+
+- Real-time logging of traffic stops via Streamlit form
+- Rule-based prediction of violations and outcomes
+- SQL-powered analytics with 20 advanced queries
+- Interactive dashboard with KPI metrics and Plotly visualizations
+- Centralized MySQL database for check post operations
+
+---
 
 ## Skills Demonstrated
 
-- Python data preprocessing (`pandas`, `datetime`)  
-- SQL schema design and query optimization  
-- Streamlit dashboard development  
-- Plotly visualizations  
-- Integration of rule-based logic and predictive tagging
+- Python data preprocessing (`pandas`, `datetime`)
+- SQL schema design and query optimization
+- Streamlit dashboard development
+- Plotly visualizations (bar, line, scatter, pie)
+- `pymysql` integration for live database connectivity
+- Rule-based logic and predictive tagging
 
-- ## Dataset
+---
 
-**Source**: `traffic_stops`  
+## Dataset
+
+**Source**: `traffic_stops` table (MySQL) — loaded from `cleaned_traffic_stop.csv`
+
 **Fields Include**:
-- `stop_date`, `stop_time`, `country_name`, `driver_gender`, `driver_age`, `driver_race`  
-- `violation`, `search_conducted`, `search_type`, `stop_outcome`, `is_arrested`, `stop_duration`, `drugs_related_stop`, `vehicle_number`
 
-- ## VS code ipynb file Workflow
+| Column | Description |
+|---|---|
+| `stop_date`, `stop_time` | Date and time of the stop |
+| `country_name` | Location of the check post |
+| `driver_gender`, `driver_age`, `driver_race` | Driver demographics |
+| `violation` | Type of traffic violation |
+| `search_conducted`, `search_type` | Whether a search was done and its type |
+| `stop_outcome` | Result (Warning / Citation / Arrest) |
+| `is_arrested` | Boolean arrest flag |
+| `stop_duration` | Duration category (0–15 Min, 16–30 Min, 30+ Min) |
+| `drugs_related_stop` | Whether the stop was drug-related |
+| `vehicle_number` | Registered vehicle number |
+| `timestamp` | Combined datetime of the stop |
+
+---
+
+## Notebook Workflow (`setup_database.ipynb`)
 
 The notebook prepares and loads traffic stop data into MySQL:
 
-1. **Data Cleaning**  
-   - Drops empty columns  
-   - Fills missing `search_type` with `"No Search"`  
+1. **Data Cleaning**
+   - Drops empty columns
+   - Fills missing `search_type` with `"No Search"`
    - Removes raw columns (`violation_raw`, `driver_age_raw`)
 
-2. **Timestamp Creation**  
+2. **Timestamp Creation**
+   - Converts `stop_time` string to `datetime.time`
    - Combines `stop_date` and `stop_time` into a `timestamp` column
+   - Saves updated CSV before database upload
 
-3. **Database Setup**  
-   - Creates `Secure_check` database and `traffic_stops` table  
-   - Adds `timestamp` column and ensures `stop_time` is stored as `TIME`
+3. **Database Setup**
+   - Creates `Secure_check` database and `traffic_stops` table
+   - Adds `timestamp` column using `information_schema` check to prevent duplicate column errors
 
-4. **Data Insertion**  
-   - Reads cleaned CSV  
+4. **Data Insertion**
+   - Reads cleaned CSV
    - Inserts all rows into MySQL using bulk upload
 
 ---
-## 🔧 Streamlit App Structure (`police.py`)
 
-This Python file powers the SecureCheck dashboard:
+## Streamlit App Structure (`police.py`)
 
-### 1. **Log a Stop (Tab 1)**
-- Streamlit form for entering traffic stop details  
-- Validation checks for required fields  
-- Rule-based prediction of violation and outcome  
-- Summary generator for officer review
+### Tab 1 — Log a Stop
+- Streamlit form for entering traffic stop details
+- Validation checks for all required fields
+- Rule-based prediction of violation type and stop outcome
+- Auto-generated stop summary for officer review
 
-### 2. **View Insights (Tab 2)**
-- Displays recent traffic stops from the database  
-- Formats `stop_time` for readability (e.g., `12:30 PM`)  
-- Handles missing or improperly stored time values gracefully
+### Tab 2 — View Insights
+- **4 KPI metrics**: Total Stops, Total Arrests, Searches Conducted, Drug-Related Stops
+- **6 Plotly charts**: Violations, Stop Outcomes, Gender, Race, Hourly Trends, Top Countries
+- **50-row recent stops table** with full stop details
 
-### 3. ** Advanced Queries (Tab 3)**
-- Dropdown menu with 15+ SQL queries  
-- Dynamic execution and result display  
-- Visualizations using Plotly (bar, line, scatter)  
-- Special logic for comparing day vs night arrest rates
+### Tab 3 — Advanced Queries
+- Dropdown with **20 pre-built SQL queries**
+- Dynamic query execution and result display
+- Plotly charts (bar, line, scatter, pie) per query
+- **3-column insight cards** highlighting key data findings per query
+- Special day vs night arrest rate comparison logic
 
-### 4. ** Database Integration**
-- Connects to MySQL using `pymysql`  
-- Uses a reusable `fetch_data()` function to run queries and return results as DataFrames
+### Database Integration
+- Connects to MySQL using `pymysql`
+- Reusable `fetch_data()` function returns results as pandas DataFrames
 
 ---
 
 ## Install Dependencies
 
-To run the dashboard locally:
-
 ### 1. Create a virtual environment (optional)
+
 ```bash
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+venv\Scripts\activate
+```
 
-Install required packages:
+### 2. Install required packages
 
+```bash
+pip install streamlit==1.29.0 pandas==2.1.1 plotly==5.18.0 matplotlib==3.8.0 pymysql==1.1.0
+```
+
+Or install from a `requirements.txt`:
+
+```
 streamlit==1.29.0
 pandas==2.1.1
 plotly==5.18.0
 matplotlib==3.8.0
 pymysql==1.1.0
-mysql-connector-python==8.3.0
+```
 
+---
 
-## How to run
+## How to Run
 
-1. **Clone the Repository**
-bash
-git clone https://github.com/your-username/SecureCheck.git
-cd SecureCheck
+### 1. Set Up MySQL Database
 
-2. **Set Up MySQL Database**
-Create database Secure_check
+- Create the `Secure_check` database in MySQL
+- Run all cells in `setup_database.ipynb` to clean data and populate the table
 
-Run the schema and data upload steps from the notebook
+### 2. Launch Streamlit Dashboard
 
-3. **Launch Streamlit Dashboard**
-bash
+```bash
 streamlit run police.py
+```
 
- **Dashboard Preview**
-Tab 1: Log a Stop — Form-based entry with rule-based prediction
+---
 
-Tab 2: View Insights — Recent logs with formatted timestamps
+## Dashboard Preview
 
-Tab 3: Advanced Queries — Select and visualize SQL analytics
+| Tab | Description |
+|---|---|
+| **Log a Stop** | Form-based entry with rule-based prediction and stop summary |
+| **View Insights** | KPI cards, 6 interactive charts, recent stops table |
+| **Advanced Queries** | 20 SQL queries with dynamic charts and insight cards |
