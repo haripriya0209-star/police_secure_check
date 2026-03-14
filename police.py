@@ -1,43 +1,43 @@
 import streamlit as st
 import pandas as pd
-import pymysql
 import plotly.express as px
-import matplotlib.pyplot as plt
+from db import fetch_data, insert_stop, check_flagged_vehicle
 
 # --- Page Setup ---
 st.set_page_config(page_title="SecureCheck Dashboard", layout="wide")
 st.title("🚨 SecureCheck: Police Post Digital Ledger")
 
-# --- Database Connection ---
-def create_connection():
-    try:
-        return pymysql.connect(
-            host="localhost",
-            user="root",
-            password="HiAshwin@91",
-            database="Secure_check",
-            cursorclass=pymysql.cursors.DictCursor
-        )
-    except Exception as e:
-        st.error(f"Database connection failed: {e}")
-        return None
+# --- Role-Based Login (Sidebar) ---
+# This controls who can see what on the dashboard
+st.sidebar.title("🔐 Officer Login")
+role = st.sidebar.selectbox("Login as", ["Officer", "Admin"])
+password = st.sidebar.text_input("Password", type="password")
 
-# --- Data Fetching ---
-def fetch_data(query, params=None):
-    conn = create_connection()
-    if conn:
-        with conn.cursor() as cursor:
-            cursor.execute(query, params or ())
-            result = cursor.fetchall()
-        conn.close()
-        return pd.DataFrame(result)
-    return pd.DataFrame()
+# Show login status in sidebar
+if role == "Admin":
+    if password == "":
+        st.sidebar.info("ℹ️ Enter Admin password to unlock all tabs")
+    elif password == "admin123":
+        st.sidebar.success("✅ Logged in as Admin — Full Access")
+    else:
+        st.sidebar.error("❌ Wrong password")
+elif role == "Officer":
+    st.sidebar.success("✅ Logged in as Officer — Tab 1 & 2 only")
+
+# --- Access flags ---
+# officer_access: True for any Officer (no password needed)
+# admin_access: True only for Admin with correct password
+officer_access = (role == "Officer")
+admin_full_access = (role == "Admin" and password == "admin123")
 
 # --- Tabs Layout ---
 tab1, tab2, tab3 = st.tabs(["📋 Log a Stop", "📊 View Insights", "🧩 Advanced Queries"])
 
-# --- Tab 1: Form ---
+# --- Tab 1: Form --- (Officers and Admins can access)
 with tab1:
+    if not officer_access and not admin_full_access:
+        st.warning("🔒 Please login using the sidebar to access this tab.")
+        st.stop()
     st.subheader("📋 Traffic Stop Form")
     with st.form("stop_form"):
         col1, col2 = st.columns(2)
@@ -71,8 +71,6 @@ with tab1:
           for e in errors:
             st.error(f" {e}")
         else:
-           st.success("✅ Stop logged successfully!")
-
            # --- Rule-based prediction logic using valid categories ---
            if driver_age < 25 and drugs_related == "Yes":
                predict_violation = "DUI"
@@ -115,15 +113,38 @@ Vehicle number: **{vehicle_number}**
            st.markdown("### **Stop Summary**")
            st.markdown(summary)
 
-# --- Tab 2: Insights ---
+           # --- Step 1: Save the stop to MySQL ---
+           saved = insert_stop(
+               stop_date, stop_time, country_name, driver_gender, driver_age,
+               driver_race, search_conducted, search_type, drugs_related,
+               stop_duration, vehicle_number, predict_violation, predict_outcome
+           )
+
+           # --- Step 2: Check if the vehicle is flagged ---
+           flagged = check_flagged_vehicle(vehicle_number.strip().upper())
+           if flagged:
+               st.error(f"🚨 ALERT! Vehicle **{vehicle_number.upper()}** is FLAGGED!")
+               st.warning(f"⚠️ Reason: {flagged.get('reason', 'Suspect vehicle')} | Flagged on: {flagged.get('flagged_date', 'N/A')}")
+           else:
+               if saved:
+                   st.success("✅ Stop logged and saved to database successfully!")
+               else:
+                   st.warning("⚠️ Stop summary generated but could not be saved to database.")
+
+# --- Tab 2: Insights --- (Officers and Admins can access)
 with tab2:
+    if not officer_access and not admin_full_access:
+        st.warning("🔒 Please login using the sidebar to access this tab.")
+        st.stop()
     # --- KPI Metrics ---
     total = fetch_data("SELECT COUNT(*) AS total FROM traffic_stops")
     arrests = fetch_data("SELECT COUNT(*) AS arrests FROM traffic_stops WHERE is_arrested = 1")
     searches = fetch_data("SELECT COUNT(*) AS searches FROM traffic_stops WHERE search_conducted = 1")
     drug_stops = fetch_data("SELECT COUNT(*) AS drug_stops FROM traffic_stops WHERE drugs_related_stop = 1")
+    # Violation Detection Rate = flagged vehicles caught / total stops × 100
+    flagged_caught = fetch_data("SELECT COUNT(*) AS flagged FROM traffic_stops WHERE vehicle_number IN (SELECT vehicle_number FROM flagged_vehicles)")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     if not total.empty:
         col1.metric("Total Stops", f"{total['total'].iloc[0]:,}")
     if not arrests.empty:
@@ -132,6 +153,9 @@ with tab2:
         col3.metric("Searches Conducted", f"{searches['searches'].iloc[0]:,}")
     if not drug_stops.empty:
         col4.metric("Drug-Related Stops", f"{drug_stops['drug_stops'].iloc[0]:,}")
+    if not flagged_caught.empty and not total.empty and total['total'].iloc[0] > 0:
+        rate = round(flagged_caught['flagged'].iloc[0] * 100 / total['total'].iloc[0], 2)
+        col5.metric("🚨 Violation Detection Rate", f"{rate}%")
 
     st.markdown("---")
 
@@ -197,37 +221,42 @@ with tab2:
         st.info("No traffic stops found.")
  
     # Advanced Queries
-with tab3: 
-    
- st.header("🧩 Advanced Insights")
+with tab3:
+    # Tab 3 is ADMIN ONLY
+    if not admin_full_access:
+        st.error("🔒 This section is for Admins only.")
+        st.info("👉 Select 'Admin' from the sidebar and enter the correct password.")
+        st.stop()
 
- selected_query = st.selectbox("Select a Query to Run", [
-    "top 10 vehicle Number involved in drug-related stops",
-    "Which vehicles were most frequently searched?",
-    "gender distribution of drivers stopped in each country",
-    "race and gender combination has the highest search rate",
-    "driver age group had the highest arrest rate",
-    "time of day sees the most traffic stops",
-    "average stop duration for different violations",
-    "Are stops during the night more likely to lead to arrests?",
-    "Which violations are most associated with searches or arrests?",
-    "violations are most common among younger drivers (<25)",
-    "Is there a violation that rarely results in search or arrest?",
-    "countries report the highest rate of drug-related stops",
-    "arrest rate by country and violation",
-    "country has the most stops with search conducted",
-    "Yearly Breakdown of Stops and Arrests by Country",
-    "Driver Violation Trends Based on Age and Race",
-    "Number of Stops by Year,Month, Hour of the Day",
-    "Violations with High Search and Arrest Rates",
-    "Driver Demographics by Country(Age, Gender, and Race)",
-    "Top 5 Violations with Highest Arrest Rates"
- ])
+    st.header("🧩 Advanced Insights")
 
- query_map = {
-    "top 10 vehicle Number involved in drug-related stops": "SELECT vehicle_number, COUNT(*) AS stop_count FROM traffic_stops WHERE drugs_related_stop = 1 GROUP BY vehicle_number ORDER BY stop_count DESC limit 10",
-    "Which vehicles were most frequently searched?": "select vehicle_number,count(*) as search_count from traffic_stops where search_conducted=1 group by vehicle_number order by search_count DESC ;",
-    "gender distribution of drivers stopped in each country": "select country_name ,driver_gender,count(*) as stop_count from traffic_stops where driver_gender is not null group by country_name,driver_gender order by country_name,stop_count desc;",
+    selected_query = st.selectbox("Select a Query to Run", [
+        "top 10 vehicle Number involved in drug-related stops",
+        "Which vehicles were most frequently searched?",
+        "gender distribution of drivers stopped in each country",
+        "race and gender combination has the highest search rate",
+        "driver age group had the highest arrest rate",
+        "time of day sees the most traffic stops",
+        "average stop duration for different violations",
+        "Are stops during the night more likely to lead to arrests?",
+        "Which violations are most associated with searches or arrests?",
+        "violations are most common among younger drivers (<25)",
+        "Is there a violation that rarely results in search or arrest?",
+        "countries report the highest rate of drug-related stops",
+        "arrest rate by country and violation",
+        "country has the most stops with search conducted",
+        "Yearly Breakdown of Stops and Arrests by Country",
+        "Driver Violation Trends Based on Age and Race",
+        "Number of Stops by Year,Month, Hour of the Day",
+        "Violations with High Search and Arrest Rates",
+        "Driver Demographics by Country(Age, Gender, and Race)",
+        "Top 5 Violations with Highest Arrest Rates"
+    ])
+
+    query_map = {
+        "top 10 vehicle Number involved in drug-related stops": "SELECT vehicle_number, COUNT(*) AS stop_count FROM traffic_stops WHERE drugs_related_stop = 1 GROUP BY vehicle_number ORDER BY stop_count DESC limit 10",
+        "Which vehicles were most frequently searched?": "select vehicle_number,count(*) as search_count from traffic_stops where search_conducted=1 group by vehicle_number order by search_count DESC ;",
+        "gender distribution of drivers stopped in each country": "select country_name ,driver_gender,count(*) as stop_count from traffic_stops where driver_gender is not null group by country_name,driver_gender order by country_name,stop_count desc;",
     "driver age group had the highest arrest rate":""" SELECT 
       (driver_age / 10) * 10 AS age_group,
       ROUND(SUM(is_arrested) * 100.0 / COUNT(*), 2) AS arrest_rate
@@ -384,21 +413,20 @@ FROM traffic_stops
  ORDER BY arrest_rate DESC
  LIMIT 5;"""
 
-    
- }
+    }
 
- if st.button("Run Query"):
-    result = fetch_data(query_map[selected_query].strip())
+    if st.button("Run Query"):
+        result = fetch_data(query_map[selected_query].strip())
 
-    if not result.empty:
-        st.markdown("### Visualization")
+        if not result.empty:
+            st.markdown("### Visualization")
 
-        def show_insights(i1, i2, i3):
-            st.markdown("### 🔍 Key Insights")
-            c1, c2, c3 = st.columns(3)
-            c1.info(i1)
-            c2.info(i2)
-            c3.info(i3)
+            def show_insights(i1, i2, i3):
+                st.markdown("### 🔍 Key Insights")
+                c1, c2, c3 = st.columns(3)
+                c1.info(i1)
+                c2.info(i2)
+                c3.info(i3)
 
         if selected_query == "top 10 vehicle Number involved in drug-related stops":
             fig = px.bar(result, x="vehicle_number", y="stop_count", title="Top 10 Vehicles in Drug-Related Stops")
