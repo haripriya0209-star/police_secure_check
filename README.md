@@ -17,10 +17,14 @@ SecureCheck is a real-time traffic stop logging and analytics system designed fo
 ## Key Features
 
 - Real-time logging of traffic stops via Streamlit form
+- **Live INSERT to MySQL** — every submitted stop is saved directly to the database
+- **Role-based login** — Officer and Admin access levels with sidebar authentication
+- **Flagged vehicle alert** — cross-checks every stop against a `flagged_vehicles` watchlist table
 - Rule-based prediction of violations and outcomes
 - SQL-powered analytics with 20 advanced queries
 - Interactive dashboard with KPI metrics and Plotly visualizations
 - Centralized MySQL database for check post operations
+- **Modular code structure** — database logic separated into `db.py`
 
 ---
 
@@ -30,8 +34,10 @@ SecureCheck is a real-time traffic stop logging and analytics system designed fo
 - SQL schema design and query optimization
 - Streamlit dashboard development
 - Plotly visualizations (bar, line, scatter, pie)
-- `pymysql` integration for live database connectivity
+- `pymysql` integration for live database connectivity — reads and writes
 - Rule-based logic and predictive tagging
+- Role-based access control (Officer / Admin)
+- Modular Python architecture — UI layer (`police.py`) separated from DB layer (`db.py`)
 
 ---
 
@@ -83,18 +89,25 @@ The notebook prepares and loads traffic stop data into MySQL:
 
 ## Streamlit App Structure (`police.py`)
 
+### Sidebar — Role-Based Login
+- Select role: **Officer** or **Admin**
+- Admin requires password (`admin123`) to unlock Tab 3
+- Tab access is blocked with `st.stop()` if credentials are not met
+
 ### Tab 1 — Log a Stop
 - Streamlit form for entering traffic stop details
 - Validation checks for all required fields
 - Rule-based prediction of violation type and stop outcome
 - Auto-generated stop summary for officer review
+- **Saves the stop to MySQL** via `insert_stop()` on every valid submission
+- **Flagged vehicle check** — if the vehicle number is in the `flagged_vehicles` table, a red 🚨 alert is shown with the reason
 
 ### Tab 2 — View Insights
-- **4 KPI metrics**: Total Stops, Total Arrests, Searches Conducted, Drug-Related Stops
+- **5 KPI metrics**: Total Stops, Total Arrests, Searches Conducted, Drug-Related Stops, Violation Detection Rate
 - **6 Plotly charts**: Violations, Stop Outcomes, Gender, Race, Hourly Trends, Top Countries
 - **50-row recent stops table** with full stop details
 
-### Tab 3 — Advanced Queries
+### Tab 3 — Advanced Queries (Admin only)
 - Dropdown with **20 pre-built SQL queries**
 - Dynamic query execution and result display
 - Plotly charts (bar, line, scatter, pie) per query
@@ -119,7 +132,7 @@ venv\Scripts\activate
 ### 2. Install required packages
 
 ```bash
-pip install streamlit==1.29.0 pandas==2.1.1 plotly==5.18.0 matplotlib==3.8.0 pymysql==1.1.0
+pip install streamlit==1.29.0 pandas==2.1.1 plotly==5.18.0 pymysql==1.1.0
 ```
 
 Or install from a `requirements.txt`:
@@ -128,7 +141,6 @@ Or install from a `requirements.txt`:
 streamlit==1.29.0
 pandas==2.1.1
 plotly==5.18.0
-matplotlib==3.8.0
 pymysql==1.1.0
 ```
 
@@ -139,7 +151,22 @@ pymysql==1.1.0
 ### 1. Set Up MySQL Database
 
 - Create the `Secure_check` database in MySQL
-- Run all cells in `setup_database.ipynb` to clean data and populate the table
+- Run all cells in `setup_database.ipynb` to clean data and populate the `traffic_stops` table
+- Create the `flagged_vehicles` watchlist table by running this in MySQL Workbench:
+
+```sql
+USE Secure_check;
+CREATE TABLE IF NOT EXISTS flagged_vehicles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    vehicle_number VARCHAR(20),
+    reason VARCHAR(255),
+    flagged_date DATE
+);
+-- Optional: add sample flagged vehicles for testing
+INSERT INTO flagged_vehicles (vehicle_number, reason, flagged_date) VALUES
+('AB1234', 'Repeat drug offender', '2026-01-15'),
+('XY9999', 'Stolen vehicle', '2026-02-20');
+```
 
 ### 2. Launch Streamlit Dashboard
 
@@ -147,12 +174,31 @@ pymysql==1.1.0
 streamlit run police.py
 ```
 
+### 3. Login
+
+| Role | Password | Access |
+|---|---|---|
+| Officer | *(none)* | Tab 1 + Tab 2 |
+| Admin | `admin123` | Tab 1 + Tab 2 + Tab 3 |
+
 ---
 
 ## Dashboard Preview
 
 | Tab | Description |
 |---|---|
-| **Log a Stop** | Form-based entry with rule-based prediction and stop summary |
-| **View Insights** | KPI cards, 6 interactive charts, recent stops table |
-| **Advanced Queries** | 20 SQL queries with dynamic charts and insight cards |
+| **Log a Stop** | Form-based entry, rule-based prediction, INSERT to MySQL, flagged vehicle alert |
+| **View Insights** | 5 KPI cards, 6 interactive charts, recent stops table |
+| **Advanced Queries** | Admin only — 20 SQL queries with dynamic charts and insight cards |
+
+---
+
+## Project File Structure
+
+| File | Purpose |
+|---|---|
+| `police.py` | Streamlit UI — all tabs, forms, charts, and layout |
+| `db.py` | Database layer — `fetch_data`, `insert_stop`, `check_flagged_vehicle` |
+| `setup_database.ipynb` | Data cleaning and MySQL table setup |
+| `cleaned_traffic_stop.csv` | Source data (65,538 rows) |
+
